@@ -7,11 +7,17 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         /* ---------- 样式 ---------- */
+        @font-face {
+            font-family: 'Times New Roman Digits';
+            src: local('Times New Roman');
+            unicode-range: U+0030-0039;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif;
+            font-family: 'Times New Roman Digits', 'Constantia', '方正小标宋简体', sans-serif;
         }
 
         body {
@@ -35,6 +41,22 @@
                         0 8px 24px -6px rgba(0, 0, 0, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.5);
             transition: 0.2s;
+        }
+
+        body.overview-open {
+            justify-content: flex-start;
+            align-items: flex-start;
+            overflow-x: hidden;
+        }
+
+        .app-container.overview-open {
+            width: 100%;
+            min-width: 0;
+            max-width: none;
+        }
+
+        #dayOverviewView {
+            width: 100%;
         }
 
         .header {
@@ -435,6 +457,62 @@
             font-size: 20px;
         }
 
+        .study-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .day-overview-list {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 8px;
+            list-style: none;
+            width: 100%;
+            min-width: 0;
+            max-height: 65vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: white;
+            border-radius: 24px;
+            padding: 8px 20px;
+            box-shadow: 0 12px 30px -8px rgba(0, 20, 30, 0.12);
+        }
+
+        .day-overview-item {
+            min-width: 0;
+            padding: 10px;
+            border: 1px solid #e8edf3;
+            border-radius: 12px;
+        }
+
+        .overview-index {
+            color: #7a8a9b;
+            font-size: 12px;
+        }
+
+        .overview-word {
+            color: #0b1e33;
+            font-size: 16px;
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+
+        .day-overview-item .pos-tag {
+            display: table;
+            margin: 4px 0 0;
+            padding: 2px 6px;
+            font-size: 11px;
+        }
+
+        .overview-meaning {
+            color: #4a5b6e;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 4px;
+            width: 100%;
+            overflow-wrap: anywhere;
+        }
+
         .keyboard-hint {
             color: #5b6f84;
             text-align: center;
@@ -459,6 +537,24 @@
             }
             .header h1 {
                 font-size: 22px;
+            }
+            .study-heading {
+                flex-wrap: wrap;
+            }
+            .study-actions {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+            .day-overview-list {
+                gap: 4px;
+                padding: 8px;
+            }
+            .day-overview-item {
+                padding: 4px;
+            }
+            .day-overview-item .pos-tag {
+                padding: 2px 4px;
+                margin-left: 0;
             }
         }
     </style>
@@ -490,7 +586,10 @@
     <section id="studyView" hidden>
         <div class="study-heading">
             <h2 id="studyDate"></h2>
-            <button class="btn btn-outline" id="backBtn"><i class="fas fa-calendar"></i> 日期</button>
+            <div class="study-actions">
+                <button class="btn btn-outline" id="overviewBtn"><i class="fas fa-list"></i> 当天单词总览</button>
+                <button class="btn btn-outline" id="backBtn"><i class="fas fa-calendar"></i> 日期</button>
+            </div>
         </div>
         <div class="filter-bar">
             <button class="filter-btn active" data-filter="all">全部</button>
@@ -514,6 +613,14 @@
                 <button class="btn btn-outline" id="nextBtn" style="padding: 8px 18px;" aria-label="下一个"><i class="fas fa-arrow-right"></i></button>
             </div>
         </div>
+    </section>
+
+    <section id="dayOverviewView" hidden>
+        <div class="study-heading">
+            <h2 id="dayOverviewTitle"></h2>
+            <button class="btn btn-outline" id="returnToStudyBtn"><i class="fas fa-arrow-left"></i> 返回学习</button>
+        </div>
+        <ol id="dayOverviewList" class="day-overview-list"></ol>
     </section>
 </div>
 
@@ -539,11 +646,15 @@
 
         // DOM 元素
         const wordContainer = document.getElementById('wordContainer');
+        const appContainer = document.querySelector('.app-container');
         const scheduleView = document.getElementById('scheduleView');
         const studyView = document.getElementById('studyView');
+        const dayOverviewView = document.getElementById('dayOverviewView');
         const scheduleSummary = document.getElementById('scheduleSummary');
         const dayGrid = document.getElementById('dayGrid');
         const studyDate = document.getElementById('studyDate');
+        const dayOverviewTitle = document.getElementById('dayOverviewTitle');
+        const dayOverviewList = document.getElementById('dayOverviewList');
         const stats = document.getElementById('stats');
         const progressText = document.getElementById('progressText');
         const statusText = document.getElementById('statusText');
@@ -552,6 +663,8 @@
         const nextBtn = document.getElementById('nextBtn');
         const prevBtn = document.getElementById('prevBtn');
         const backBtn = document.getElementById('backBtn');
+        const overviewBtn = document.getElementById('overviewBtn');
+        const returnToStudyBtn = document.getElementById('returnToStudyBtn');
         const filterBtns = document.querySelectorAll('.filter-btn');
 
         // ---------- 存储操作 ----------
@@ -636,8 +749,11 @@
         }
 
         function renderSchedule() {
+            appContainer.classList.remove('overview-open');
+            document.body.classList.remove('overview-open');
             scheduleView.hidden = false;
             studyView.hidden = true;
+            dayOverviewView.hidden = true;
             stats.hidden = true;
             scheduleSummary.textContent =
                 `共 ${wordList.length} 个单词，分 ${studyDays.length} 天完成；每天最多 ${WORDS_PER_DAY} 个。`;
@@ -658,7 +774,10 @@
         function openDay(dayIndex) {
             activeDayIndex = dayIndex;
             const day = studyDays[dayIndex];
+            appContainer.classList.remove('overview-open');
+            document.body.classList.remove('overview-open');
             scheduleView.hidden = true;
+            dayOverviewView.hidden = true;
             studyView.hidden = false;
             stats.hidden = false;
             studyDate.textContent = `${day.date} · ${day.end - day.start} 个单词`;
@@ -667,6 +786,57 @@
             currentIndex = day.start;
             updateFilteredList();
             renderCard(currentIndex);
+        }
+
+        function openDayOverview() {
+            const day = studyDays[activeDayIndex];
+            if (!day) return;
+
+            appContainer.classList.add('overview-open');
+            document.body.classList.add('overview-open');
+            studyView.hidden = true;
+            dayOverviewView.hidden = false;
+            stats.hidden = true;
+            dayOverviewTitle.textContent = `${day.date} · ${day.end - day.start} 个单词`;
+            dayOverviewList.replaceChildren();
+
+            for (let index = day.start; index < day.end; index++) {
+                const word = wordList[index];
+                if (!word) continue;
+
+                const meanings = (word.translations || [])
+                    .map(item => item.translation)
+                    .filter(Boolean)
+                    .join('；') || '（无释义）';
+                const partsOfSpeech = [...new Set((word.translations || [])
+                    .map(item => item.type)
+                    .filter(Boolean))].join('、') || '未知';
+
+                const item = document.createElement('li');
+                item.className = 'day-overview-item';
+
+                const number = document.createElement('span');
+                number.className = 'overview-index';
+                number.textContent = String(index - day.start + 1);
+
+                const details = document.createElement('div');
+                const wordLabel = document.createElement('div');
+                wordLabel.className = 'overview-word';
+                wordLabel.textContent = word.word || '未知单词';
+
+                const posTag = document.createElement('span');
+                posTag.className = 'pos-tag';
+                posTag.textContent = partsOfSpeech;
+                wordLabel.appendChild(posTag);
+
+                const meaning = document.createElement('div');
+                meaning.className = 'overview-meaning';
+                meaning.textContent = meanings;
+
+                details.append(wordLabel, meaning);
+                item.append(number, details);
+                dayOverviewList.appendChild(item);
+            }
         }
 
         // ---------- 渲染单词卡片 ----------
@@ -697,11 +867,14 @@
             const meanings = word.translations && word.translations.length > 0
                 ? word.translations.map(item => item.translation).filter(Boolean).join('；')
                 : '（无释义）';
+            const partsOfSpeech = [...new Set((word.translations || [])
+                .map(item => item.type)
+                .filter(Boolean))].join('、') || '未知';
 
             const cardHtml = `
                 <div class="word-card">
                     <div class="word-status ${statusClass}">${statusTextContent}</div>
-                    <div class="word-en">${word.word || '未知单词'}</div>
+                    <div class="word-en">${word.word || '未知单词'}<span class="pos-tag">${partsOfSpeech}</span></div>
                     <div class="meaning-area">
                         <div class="meaning hidden" id="wordMeaning">
                             ${meanings}
@@ -943,6 +1116,14 @@
         nextBtn.addEventListener('click', nextWord);
         prevBtn.addEventListener('click', prevWord);
         backBtn.addEventListener('click', renderSchedule);
+        overviewBtn.addEventListener('click', openDayOverview);
+        returnToStudyBtn.addEventListener('click', () => {
+            appContainer.classList.remove('overview-open');
+            document.body.classList.remove('overview-open');
+            dayOverviewView.hidden = true;
+            studyView.hidden = false;
+            stats.hidden = false;
+        });
 
         filterBtns.forEach(btn => {
             btn.addEventListener('click', function() {
