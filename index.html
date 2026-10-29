@@ -377,6 +377,71 @@
             border-color: #1a2639;
         }
 
+        .schedule-view {
+            text-align: center;
+        }
+
+        .schedule-view h2 {
+            color: #1a2639;
+            margin: 8px 0;
+        }
+
+        .schedule-view p {
+            color: #5b6f84;
+            margin-bottom: 22px;
+        }
+
+        .day-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+            gap: 12px;
+        }
+
+        .day-btn {
+            border: 1px solid #dce3ed;
+            border-radius: 20px;
+            padding: 16px 10px;
+            background: white;
+            color: #1a2639;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0, 20, 40, 0.06);
+        }
+
+        .day-btn:hover {
+            border-color: #3b6ea5;
+            transform: translateY(-2px);
+        }
+
+        .day-btn span {
+            display: block;
+            margin-top: 6px;
+            color: #5b6f84;
+            font-size: 13px;
+            font-weight: 400;
+        }
+
+        .study-heading {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .study-heading h2 {
+            color: #1a2639;
+            font-size: 20px;
+        }
+
+        .keyboard-hint {
+            color: #5b6f84;
+            text-align: center;
+            font-size: 13px;
+            margin: 12px 0;
+        }
+
         @media (max-width: 550px) {
             .app-container {
                 padding: 20px 16px;
@@ -404,7 +469,7 @@
     <!-- 头部 -->
     <div class="header">
         <h1><i class="fas fa-graduation-cap"></i> 六级 · 词汇</h1>
-        <div class="stats">
+        <div class="stats" id="stats">
             <div class="progress-badge">
                 <i class="fas fa-check-circle"></i> 
                 <span id="progressText">加载中...</span>
@@ -416,32 +481,40 @@
         </div>
     </div>
 
-    <!-- 筛选栏 -->
-    <div class="filter-bar">
-        <button class="filter-btn active" data-filter="all">全部</button>
-        <button class="filter-btn" data-filter="unlearned">未学习</button>
-        <button class="filter-btn" data-filter="learned">已学会</button>
-        <button class="filter-btn" data-filter="forgotten">需复习</button>
-    </div>
+    <section id="scheduleView" class="schedule-view">
+        <h2>每日 500 词学习计划</h2>
+        <p id="scheduleSummary">正在加载词库...</p>
+        <div id="dayGrid" class="day-grid"></div>
+    </section>
 
-    <!-- 单词卡片 -->
-    <div class="card-wrapper">
-        <div id="wordContainer">
-            <div class="loading">
-                <i class="fas fa-spinner fa-spin"></i> 加载词库中...
+    <section id="studyView" hidden>
+        <div class="study-heading">
+            <h2 id="studyDate"></h2>
+            <button class="btn btn-outline" id="backBtn"><i class="fas fa-calendar"></i> 日期</button>
+        </div>
+        <div class="filter-bar">
+            <button class="filter-btn active" data-filter="all">全部</button>
+            <button class="filter-btn" data-filter="unlearned">未学习</button>
+            <button class="filter-btn" data-filter="learned">已记住</button>
+            <button class="filter-btn" data-filter="forgotten">未记住</button>
+        </div>
+        <div class="card-wrapper">
+            <div id="wordContainer">
+                <div class="loading">
+                    <i class="fas fa-spinner fa-spin"></i> 加载词库中...
+                </div>
             </div>
         </div>
-    </div>
-
-    <!-- 底部导航 -->
-    <div class="footer-actions">
-        <span class="counter"><i class="far fa-clock"></i> <span id="wordCounter">0 / 0</span></span>
-        <div style="display: flex; gap: 10px;">
-            <button class="reset-btn" id="resetBtn"><i class="fas fa-undo-alt"></i> 重置进度</button>
-            <button class="btn btn-outline" id="prevBtn" style="padding: 8px 18px;"><i class="fas fa-arrow-left"></i></button>
-            <button class="btn btn-outline" id="nextBtn" style="padding: 8px 18px;"><i class="fas fa-arrow-right"></i></button>
+        <div class="keyboard-hint">空格：显示/隐藏意思　↑：未记住　↓：已记住</div>
+        <div class="footer-actions">
+            <span class="counter"><i class="far fa-clock"></i> <span id="wordCounter">0 / 0</span></span>
+            <div style="display: flex; gap: 10px;">
+                <button class="reset-btn" id="resetBtn"><i class="fas fa-undo-alt"></i> 重置当天进度</button>
+                <button class="btn btn-outline" id="prevBtn" style="padding: 8px 18px;" aria-label="上一个"><i class="fas fa-arrow-left"></i></button>
+                <button class="btn btn-outline" id="nextBtn" style="padding: 8px 18px;" aria-label="下一个"><i class="fas fa-arrow-right"></i></button>
+            </div>
         </div>
-    </div>
+    </section>
 </div>
 
 <script>
@@ -449,6 +522,8 @@
         // ---------- 全局状态 ----------
         let wordList = [];
         let currentIndex = 0;
+        let studyDays = [];
+        let activeDayIndex = -1;
         let filteredIndices = [];  // 当前筛选后的索引列表
         let filteredIndexPos = 0;  // 在 filteredIndices 中的位置
         
@@ -459,15 +534,24 @@
         let currentFilter = 'all'; // 'all' | 'unlearned' | 'learned' | 'forgotten'
 
         const STORAGE_KEY = 'cet6_learning_progress';
+        const WORDS_PER_DAY = 500;
+        const START_DATE = new Date(Date.UTC(2026, 9, 29));
 
         // DOM 元素
         const wordContainer = document.getElementById('wordContainer');
+        const scheduleView = document.getElementById('scheduleView');
+        const studyView = document.getElementById('studyView');
+        const scheduleSummary = document.getElementById('scheduleSummary');
+        const dayGrid = document.getElementById('dayGrid');
+        const studyDate = document.getElementById('studyDate');
+        const stats = document.getElementById('stats');
         const progressText = document.getElementById('progressText');
         const statusText = document.getElementById('statusText');
         const wordCounter = document.getElementById('wordCounter');
         const resetBtn = document.getElementById('resetBtn');
         const nextBtn = document.getElementById('nextBtn');
         const prevBtn = document.getElementById('prevBtn');
+        const backBtn = document.getElementById('backBtn');
         const filterBtns = document.querySelectorAll('.filter-btn');
 
         // ---------- 存储操作 ----------
@@ -501,7 +585,9 @@
         // ---------- 筛选逻辑 ----------
         function getFilteredIndices() {
             let indices = [];
-            for (let i = 0; i < wordList.length; i++) {
+            if (activeDayIndex < 0 || !studyDays[activeDayIndex]) return indices;
+            const day = studyDays[activeDayIndex];
+            for (let i = day.start; i < day.end; i++) {
                 const status = learningProgress.get(i);
                 if (currentFilter === 'all') {
                     indices.push(i);
@@ -533,6 +619,56 @@
             }
         }
 
+        function buildStudyDays() {
+            studyDays = [];
+            for (let start = 0; start < wordList.length; start += WORDS_PER_DAY) {
+                const date = new Date(START_DATE.getTime() + studyDays.length * 86400000);
+                studyDays.push({
+                    start,
+                    end: Math.min(start + WORDS_PER_DAY, wordList.length),
+                    date: new Intl.DateTimeFormat('zh-CN', {
+                        month: 'long',
+                        day: 'numeric',
+                        timeZone: 'UTC'
+                    }).format(date)
+                });
+            }
+        }
+
+        function renderSchedule() {
+            scheduleView.hidden = false;
+            studyView.hidden = true;
+            stats.hidden = true;
+            scheduleSummary.textContent =
+                `共 ${wordList.length} 个单词，分 ${studyDays.length} 天完成；每天最多 ${WORDS_PER_DAY} 个。`;
+            dayGrid.innerHTML = '';
+            studyDays.forEach((day, index) => {
+                let learned = 0;
+                for (let wordIndex = day.start; wordIndex < day.end; wordIndex++) {
+                    if (learningProgress.get(wordIndex) === 'learned') learned++;
+                }
+                const button = document.createElement('button');
+                button.className = 'day-btn';
+                button.innerHTML = `${day.date}<span>${day.end - day.start} 个单词 · 已记住 ${learned}</span>`;
+                button.addEventListener('click', () => openDay(index));
+                dayGrid.appendChild(button);
+            });
+        }
+
+        function openDay(dayIndex) {
+            activeDayIndex = dayIndex;
+            const day = studyDays[dayIndex];
+            scheduleView.hidden = true;
+            studyView.hidden = false;
+            stats.hidden = false;
+            studyDate.textContent = `${day.date} · ${day.end - day.start} 个单词`;
+            currentFilter = 'all';
+            filterBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
+            currentIndex = day.start;
+            updateFilteredList();
+            renderCard(currentIndex);
+        }
+
         // ---------- 渲染单词卡片 ----------
         function renderCard(index) {
             if (!wordList.length || index >= wordList.length || index < 0) {
@@ -548,59 +684,34 @@
             let statusTextContent = '';
             let statusClass = '';
             if (status === 'learned') {
-                statusTextContent = '✅ 已学会';
+                statusTextContent = '✅ 已记住';
                 statusClass = 'learned';
             } else if (status === 'forgotten') {
-                statusTextContent = '🔄 需要复习';
+                statusTextContent = '🔄 未记住';
                 statusClass = 'forgotten';
             } else {
                 statusTextContent = '📖 未学习';
                 statusClass = 'unlearned';
             }
 
-            // 处理翻译
-            let mainTranslation = '（无释义）';
-            let pos = '';
-            if (word.translations && word.translations.length > 0) {
-                const first = word.translations[0];
-                mainTranslation = first.translation || '（无释义）';
-                pos = first.type || '';
-            }
-
-            // 处理短语
-            let phrasesHtml = '';
-            if (word.phrases && word.phrases.length > 0) {
-                phrasesHtml = word.phrases.map(p => 
-                    `<div class="phrase-item"><i class="fas fa-link"></i> ${p.phrase} — ${p.translation}</div>`
-                ).join('');
-            }
-
-            // 处理例句
-            let exampleHtml = '';
-            if (word.examples && word.examples.length > 0) {
-                exampleHtml = `<div class="example-sentence"><i class="fas fa-quote-left"></i> ${word.examples[0]}</div>`;
-            }
+            const meanings = word.translations && word.translations.length > 0
+                ? word.translations.map(item => item.translation).filter(Boolean).join('；')
+                : '（无释义）';
 
             const cardHtml = `
                 <div class="word-card">
                     <div class="word-status ${statusClass}">${statusTextContent}</div>
                     <div class="word-en">${word.word || '未知单词'}</div>
-                    <div class="phonetic">${word.phonetic || ''}</div>
                     <div class="meaning-area">
                         <div class="meaning hidden" id="wordMeaning">
-                            ${mainTranslation}
-                            ${pos ? `<span class="pos-tag">${pos}</span>` : ''}
+                            ${meanings}
                         </div>
-                    </div>
-                    <div class="extra-info">
-                        ${exampleHtml}
-                        ${phrasesHtml}
                     </div>
                 </div>
                 <div class="action-group">
                     <button class="btn btn-primary" id="revealBtn"><i class="fas fa-eye"></i> 显示释义</button>
-                    <button class="btn btn-success" id="knowBtn"><i class="fas fa-thumbs-up"></i> 认识</button>
-                    <button class="btn btn-warning" id="forgetBtn"><i class="fas fa-exclamation-triangle"></i> 忘记</button>
+                    <button class="btn btn-success" id="knowBtn"><i class="fas fa-thumbs-up"></i> 已记住</button>
+                    <button class="btn btn-warning" id="forgetBtn"><i class="fas fa-thumbs-down"></i> 未记住</button>
                 </div>
             `;
 
@@ -676,57 +787,35 @@
         function handleKnow(meaningEl, revealBtn) {
             learningProgress.set(currentIndex, 'learned');
             saveProgress();
-
-            // 自动显示释义
-            if (!isMeaningRevealed && meaningEl) {
-                toggleReveal(meaningEl, revealBtn);
-            }
-
-            // 按钮反馈
-            const knowBtn = document.getElementById('knowBtn');
-            if (knowBtn) {
-                knowBtn.style.transform = 'scale(0.94)';
-                setTimeout(() => { knowBtn.style.transform = 'scale(1)'; }, 120);
-            }
-
-            // 重新筛选并跳转
-            setTimeout(() => {
-                updateFilteredList();
-                if (filteredIndices.length > 0) {
-                    // 跳到下一个
-                    const nextPos = (filteredIndexPos + 1) % filteredIndices.length;
-                    filteredIndexPos = nextPos;
-                    currentIndex = filteredIndices[nextPos];
-                    renderCard(currentIndex);
-                }
-            }, 300);
+            moveAfterMark(meaningEl, revealBtn);
         }
 
         // ---------- 处理"忘记" ----------
         function handleForget(meaningEl, revealBtn) {
             learningProgress.set(currentIndex, 'forgotten');
             saveProgress();
+            moveAfterMark(meaningEl, revealBtn);
+        }
 
-            // 自动显示释义
+        function moveAfterMark(meaningEl, revealBtn) {
             if (!isMeaningRevealed && meaningEl) {
                 toggleReveal(meaningEl, revealBtn);
             }
-
-            const forgetBtn = document.getElementById('forgetBtn');
-            if (forgetBtn) {
-                forgetBtn.style.transform = 'scale(0.94)';
-                setTimeout(() => { forgetBtn.style.transform = 'scale(1)'; }, 120);
+            const previousIndex = currentIndex;
+            const previousPosition = filteredIndexPos;
+            updateFilteredList();
+            if (filteredIndices.length > 0) {
+                const previousStillIncluded = filteredIndices.includes(previousIndex);
+                filteredIndexPos = previousStillIncluded
+                    ? (filteredIndexPos + 1) % filteredIndices.length
+                    : Math.min(previousPosition, filteredIndices.length - 1);
+                currentIndex = filteredIndices[filteredIndexPos];
+                renderCard(currentIndex);
+            } else {
+                wordContainer.innerHTML = '<div class="loading">当天符合此筛选条件的单词已完成</div>';
+                updateCounter();
+                updateStats();
             }
-
-            setTimeout(() => {
-                updateFilteredList();
-                if (filteredIndices.length > 0) {
-                    const nextPos = (filteredIndexPos + 1) % filteredIndices.length;
-                    filteredIndexPos = nextPos;
-                    currentIndex = filteredIndices[nextPos];
-                    renderCard(currentIndex);
-                }
-            }, 300);
         }
 
         // ---------- 导航 ----------
@@ -748,9 +837,9 @@
 
         // ---------- 更新统计 ----------
         function updateStats() {
-            const total = wordList.length || 0;
+            const day = activeDayIndex >= 0 ? studyDays[activeDayIndex] : null;
             let learned = 0, forgotten = 0, unlearned = 0;
-            for (let i = 0; i < total; i++) {
+            for (let i = day ? day.start : 0; day && i < day.end; i++) {
                 const status = learningProgress.get(i);
                 if (status === 'learned') learned++;
                 else if (status === 'forgotten') forgotten++;
@@ -761,8 +850,8 @@
             // 更新当前单词状态
             const status = learningProgress.get(currentIndex);
             let text = '';
-            if (status === 'learned') text = '已学会 ✅';
-            else if (status === 'forgotten') text = '需复习 🔄';
+            if (status === 'learned') text = '已记住 ✅';
+            else if (status === 'forgotten') text = '未记住 🔄';
             else text = '未学习 📖';
             statusText.textContent = text;
         }
@@ -775,10 +864,13 @@
 
         // ---------- 重置 ----------
         function resetProgress() {
-            if (!wordList.length) return;
-            if (!confirm('重置所有学习进度？这将清除所有"认识"和"忘记"的记录。')) return;
-            learningProgress.clear();
+            if (activeDayIndex < 0) return;
+            if (!confirm('重置当天的学习进度？')) return;
+            const day = studyDays[activeDayIndex];
+            for (let i = day.start; i < day.end; i++) learningProgress.delete(i);
             saveProgress();
+            currentFilter = 'all';
+            filterBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
             updateFilteredList();
             if (filteredIndices.length > 0) {
                 filteredIndexPos = 0;
@@ -824,19 +916,12 @@
                 .then(data => {
                     if (Array.isArray(data) && data.length > 0) {
                         wordList = data;
+                        buildStudyDays();
                         
                         // 加载保存的进度
                         const hasProgress = loadProgress();
                         
-                        // 初始化筛选
-                        updateFilteredList();
-                        if (filteredIndices.length > 0) {
-                            filteredIndexPos = 0;
-                            currentIndex = filteredIndices[0];
-                        } else {
-                            currentIndex = 0;
-                        }
-                        renderCard(currentIndex);
+                        renderSchedule();
                         
                         console.log(`📚 加载了 ${wordList.length} 个单词`);
                         if (hasProgress) {
@@ -848,17 +933,7 @@
                 })
                 .catch(error => {
                     console.error('加载词库失败:', error);
-                    wordContainer.innerHTML = `
-                        <div class="loading" style="color: #b13e4b;">
-                            <i class="fas fa-exclamation-triangle"></i> 
-                            加载词库失败: ${error.message}<br>
-                            <small style="font-size:14px; display:block; margin-top:12px;">
-                                请确保 <strong>4-CET6-顺序.json</strong> 文件与 HTML 在同一目录
-                            </small>
-                        </div>
-                    `;
-                    progressText.textContent = '0 / 0 / 0';
-                    wordCounter.textContent = '0 / 0';
+                    scheduleSummary.textContent = `加载词库失败：${error.message}`;
                 });
         }
 
@@ -867,6 +942,7 @@
 
         nextBtn.addEventListener('click', nextWord);
         prevBtn.addEventListener('click', prevWord);
+        backBtn.addEventListener('click', renderSchedule);
 
         filterBtns.forEach(btn => {
             btn.addEventListener('click', function() {
@@ -874,64 +950,35 @@
             });
         });
 
-        // 键盘快捷键
-        // 键盘快捷键
-document.addEventListener('keydown', function(e) {
-    // 忽略输入框等
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    
-    const key = e.key;
-    const currentRevealBtn = document.getElementById('revealBtn');
-    const currentMeaning = document.getElementById('wordMeaning');
+        document.addEventListener('keydown', function(e) {
+            if (studyView.hidden || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-    // 1: 显示/隐藏释义
-    if (key === '1') {
-        e.preventDefault();
-        if (currentRevealBtn && currentMeaning) {
-            toggleReveal(currentMeaning, currentRevealBtn);
-        }
-    }
-    // 空格键: 认识
-    else if (key === ' ' || key === 'Space') {
-        e.preventDefault();  // 阻止页面滚动
-        if (currentMeaning && currentRevealBtn) {
-            handleKnow(currentMeaning, currentRevealBtn);
-        }
-    }
-    // Enter 键: 忘记
-    else if (key === 'Enter') {
-        e.preventDefault();  // 阻止表单提交等默认行为
-        if (currentMeaning && currentRevealBtn) {
-            handleForget(currentMeaning, currentRevealBtn);
-        }
-    }
-    // 方向键: 导航
-    else if (key === 'ArrowRight') {
-        e.preventDefault();
-        nextWord();
-    }
-    else if (key === 'ArrowLeft') {
-        e.preventDefault();
-        prevWord();
-    }
-    // R: 重置
-    else if (key === 'r' || key === 'R') {
-        e.preventDefault();
-        resetProgress();
-    }
-});
+            const currentRevealBtn = document.getElementById('revealBtn');
+            const currentMeaning = document.getElementById('wordMeaning');
+
+            if (e.key === ' ' || e.key === 'Space') {
+                e.preventDefault();
+                if (currentMeaning && currentRevealBtn) toggleReveal(currentMeaning, currentRevealBtn);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (currentMeaning && currentRevealBtn) handleKnow(currentMeaning, currentRevealBtn);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (currentMeaning && currentRevealBtn) handleForget(currentMeaning, currentRevealBtn);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                nextWord();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                prevWord();
+            }
+        });
 
         // ---------- 启动 ----------
         loadWordList();
 
         console.log('📚 六级单词学习网站已启动！');
-        console.log('⌨️  快捷键:');
-        console.log('  1 - 显示/隐藏释义');
-        console.log('  2 - 标记为"认识" (已学会)');
-        console.log('  3 - 标记为"忘记" (需复习)');
-        console.log('  → - 下一个单词');
-        console.log('  ← - 上一个单词');
-        console.log('  R - 重置所有进度');
+        console.log('⌨️  快捷键: 空格显示/隐藏意思，↓已记住，↑未记住');
         console.log('💾 学习进度会自动保存在浏览器中');
     })();
 </script>
